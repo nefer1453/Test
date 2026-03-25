@@ -5,100 +5,101 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>İNSERT ANALİZ - PREMIUM v36.0</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800;900&display=swap');
-        body { font-family: 'Plus Jakarta Sans', sans-serif; background: #ffffff; color: #000; margin: 0; }
-        .tab-btn { flex: 1; padding: 20px; font-weight: 800; text-transform: uppercase; font-size: 0.7rem; background: #f3f4f6; border: none; }
-        .active-tab { background: #ffffff !important; color: #10b981 !important; font-size: 1.1rem !important; box-shadow: 0 10px 25px rgba(0,0,0,0.08); z-index: 20; }
-        .input-elite { background: #f9fafb; border: 2px solid #e5e7eb; border-radius: 16px; padding: 14px; width: 100%; color: #000; outline: none; text-align: center; font-weight: 600; transition: all 0.3s; }
-        .input-elite:focus { border-color: #10b981; }
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background: #f8fafc; margin: 0; }
+        .tab-btn { flex: 1; padding: 18px; font-weight: 800; text-transform: uppercase; font-size: 0.7rem; background: #f3f4f6; border: none; transition: all 0.3s; color: #64748b; }
+        .active-tab { background: #ffffff !important; color: #10b981 !important; font-size: 0.9rem !important; box-shadow: 0 10px 20px rgba(0,0,0,0.05); z-index: 10; border-radius: 12px; }
+        .input-elite { background: #ffffff; border: 2px solid #e2e8f0; border-radius: 16px; padding: 16px; width: 100%; font-weight: 600; outline: none; text-align: center; transition: all 0.3s; }
+        .input-elite:focus { border-color: #10b981; box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.1); }
     </style>
 </head>
 <body class="max-w-md mx-auto min-h-screen pb-32">
-    <header class="p-8 text-center bg-white">
-        <h1 class="text-3xl font-black italic tracking-tighter uppercase text-black">İNSERT ANALİZ</h1>
-        <p class="text-[10px] text-emerald-600 font-bold tracking-[5px] mt-1 uppercase">Soğanlık 2 Premium</p>
+    <header class="p-8 text-center">
+        <h1 class="text-2xl font-black italic tracking-tighter uppercase">SOĞANLIK 2 PREMİUM</h1>
     </header>
 
-    <nav class="flex mx-4 -mt-5 rounded-2xl overflow-hidden shadow-xl border border-gray-100 bg-gray-100 relative z-10">
+    <nav class="flex mx-4 p-1 rounded-2xl bg-gray-100 shadow-inner">
         <button onclick="router('kayit')" id="nav-kayit" class="tab-btn active-tab">📝 KAYIT</button>
         <button onclick="router('analiz')" id="nav-analiz" class="tab-btn">📈 ANALİZ</button>
         <button onclick="router('havuz')" id="nav-havuz" class="tab-btn">📋 HAVUZ</button>
     </nav>
 
     <div id="sc-container" class="px-6 mt-8 hidden">
-        <div id="reader" class="rounded-2xl overflow-hidden border-4 border-orange-500 shadow-2xl"></div>
-        <button onclick="stopCamera()" class="w-full mt-2 bg-red-500 text-white p-2 rounded-xl font-bold text-xs uppercase">Kapat</button>
+        <div id="reader" class="rounded-3xl overflow-hidden border-4 border-emerald-500 shadow-2xl"></div>
+        <button onclick="stopCamera()" class="w-full mt-4 bg-red-500 text-white p-4 rounded-2xl font-bold uppercase text-xs">Kamerayı Kapat</button>
     </div>
 
     <main id="app-view" class="p-6"></main>
 
-    <div id="cart-bar" class="fixed bottom-6 left-6 right-6 bg-slate-900 p-4 rounded-3xl shadow-2xl flex justify-between items-center text-white hidden z-40">
-        <span id="cart-count" class="font-black italic ml-2 text-xs uppercase">0 Ürün</span>
-        <button onclick="alert('PDF Hazırlanıyor...')" class="bg-emerald-500 px-6 py-3 rounded-2xl font-black uppercase text-[10px]">PDF BAS 📄</button>
-    </div>
-
     <script>
-        const DBModule = new Dexie("SKT_KONTROL_MASTER_POOL");
-        DBModule.version(1).stores({ products: "barkod, n, p" });
-        let html5QrCode = null;
-        const DataModule = { pB64: "", tB64: "" };
-
-        async function recoverOldData() {
-            let oldPool = JSON.parse(localStorage.getItem('pool')) || [];
-            if(oldPool.length === 0) return alert("Eski veriler bulunamadı!");
-            for(let item of oldPool) {
-                await DBModule.products.put({ 
-                    barkod: item.barcode, 
-                    n: item.name.toUpperCase(), 
-                    p: item.price, 
-                    img: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23ccc'/%3E%3C/svg%3E", 
-                    pre: "" 
-                });
-            }
-            alert("Veriler yeni sisteme aktarıldı!"); router('havuz');
-        }
+        const DB = new Dexie("StoreAnalytics");
+        DB.version(1).stores({ products: "barkod, n, p" });
+        let scanner = null;
+        let pB64 = "", tB64 = "";
 
         async function startCamera() {
             document.getElementById('sc-container').classList.remove('hidden');
-            html5QrCode = new Html5Qrcode("reader");
-            html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, (text) => {
-                if(document.getElementById('regB')) document.getElementById('regB').value = text;
+            scanner = new Html5Qrcode("reader");
+            scanner.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, (text) => {
+                const bInput = document.getElementById('regB') || document.getElementById('searchIn');
+                if(bInput) bInput.value = text;
                 stopCamera();
-            }).catch(err => alert("Kamera hatası: " + err));
+            }).catch(err => alert("Kamera izni gerekli!"));
         }
 
         function stopCamera() {
-            if(html5QrCode) html5QrCode.stop().then(() => {
-                document.getElementById('sc-container').classList.add('hidden');
-            });
+            if(scanner) scanner.stop().then(() => document.getElementById('sc-container').classList.add('hidden'));
+        }
+
+        async function saveToPool() {
+            const b = document.getElementById('regB').value, n = document.getElementById('regN').value, p = document.getElementById('regP').value;
+            if(!b || !n) return alert("Barkod ve İsim zorunlu!");
+            await DB.products.put({ barkod: b, n: n.toUpperCase(), p, img: pB64 });
+            alert("Havuza Eklendi! ✅");
+            router('havuz');
         }
 
         const router = async (page) => {
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active-tab'));
             document.getElementById('nav-' + page).classList.add('active-tab');
             const view = document.getElementById('app-view');
+
             if(page === 'kayit') {
-                view.innerHTML = `<div class="bg-white p-6 space-y-4 rounded-[30px] shadow-lg border">
+                view.innerHTML = `<div class="bg-white p-6 space-y-4 rounded-[32px] shadow-xl border border-gray-50">
                     <div class="flex gap-2">
-                        <input id="regB" placeholder="BARKOD" class="input-elite flex-1">
-                        <button onclick="startCamera()" class="bg-orange-500 text-white px-4 rounded-2xl font-bold italic text-xs uppercase">KAMERA 📷</button>
+                        <input id="regB" placeholder="BARKOD" class="input-elite flex-1 uppercase">
+                        <button onclick="startCamera()" class="bg-orange-500 text-white px-5 rounded-2xl font-bold">📷</button>
                     </div>
                     <input id="regN" placeholder="ÜRÜN ADI" class="input-elite uppercase">
                     <input id="regP" placeholder="FİYAT" class="input-elite">
-                    <button onclick="alert('Kayıt Fonksiyonu Çalışıyor')" class="w-full bg-slate-900 text-white p-5 rounded-3xl font-black uppercase">HAVUZA EKLE</button>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div onclick="document.getElementById('f1').click()" class="bg-slate-50 border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer">
+                            <span class="text-[9px] font-bold text-slate-400 uppercase">Ürün Foto</span>
+                            <input type="file" id="f1" class="hidden" onchange="readImg(this)">
+                        </div>
+                    </div>
+                    <button onclick="saveToPool()" class="w-full bg-slate-900 text-white p-5 rounded-3xl font-black uppercase shadow-lg active:scale-95 transition">HAVUZA EKLE</button>
                 </div>`;
             } else if(page === 'havuz') {
-                const ps = await DBModule.products.toArray();
-                view.innerHTML = `
-                <div class="grid grid-cols-2 gap-4">${ps.map(p => `<div class="bg-white p-4 rounded-3xl border text-center shadow-sm"><p class="text-[10px] font-black uppercase truncate">${p.n}</p></div>`).join('')}</div>
-                <button onclick="recoverOldData()" class="w-full mt-8 bg-red-600 text-white p-4 rounded-3xl font-black text-[10px] uppercase opacity-50">⚠️ ESKİ HAVUZU AKTAR</button>`;
+                const ps = await DB.products.toArray();
+                view.innerHTML = `<div class="grid grid-cols-2 gap-4">
+                    ${ps.map(p => `<div class="bg-white p-4 rounded-3xl border text-center shadow-sm">
+                        <p class="font-black uppercase text-[10px] truncate">${p.n}</p>
+                        <p class="text-emerald-600 font-bold text-xs">${p.p} TL</p>
+                    </div>`).join('')}
+                </div>`;
             }
         };
+
+        function readImg(input) {
+            const reader = new FileReader();
+            reader.onload = e => pB64 = e.target.result;
+            reader.readAsDataURL(input.files[0]);
+        }
+
         router('kayit');
     </script>
 </body>
