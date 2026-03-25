@@ -3,23 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>İNSERT ANALİZ - PREMIUM v36.0</title>
+    <title>İNSERT ANALİZ - PREMIUM</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800;900&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; background: #f8fafc; margin: 0; }
-        .tab-btn { flex: 1; padding: 18px; font-weight: 800; text-transform: uppercase; font-size: 0.7rem; background: #f3f4f6; border: none; transition: all 0.3s; color: #64748b; }
-        .active-tab { background: #ffffff !important; color: #10b981 !important; font-size: 0.9rem !important; box-shadow: 0 10px 20px rgba(0,0,0,0.05); z-index: 10; border-radius: 12px; }
-        .input-elite { background: #ffffff; border: 2px solid #e2e8f0; border-radius: 16px; padding: 16px; width: 100%; font-weight: 600; outline: none; text-align: center; transition: all 0.3s; }
-        .input-elite:focus { border-color: #10b981; box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.1); }
+        .tab-btn { flex: 1; padding: 18px; font-weight: 800; text-transform: uppercase; font-size: 0.7rem; background: #f3f4f6; color: #64748b; }
+        .active-tab { background: #ffffff !important; color: #10b981 !important; font-size: 0.9rem !important; box-shadow: 0 10px 20px rgba(0,0,0,0.05); border-radius: 12px; }
+        .input-elite { background: #ffffff; border: 2px solid #e2e8f0; border-radius: 16px; padding: 16px; width: 100%; font-weight: 600; outline: none; text-align: center; }
     </style>
 </head>
 <body class="max-w-md mx-auto min-h-screen pb-32">
-    <header class="p-8 text-center">
-        <h1 class="text-2xl font-black italic tracking-tighter uppercase">SOĞANLIK 2 PREMİUM</h1>
-    </header>
+    <header class="p-8 text-center"><h1 class="text-2xl font-black italic uppercase">SOĞANLIK 2 PREMIUM</h1></header>
 
     <nav class="flex mx-4 p-1 rounded-2xl bg-gray-100 shadow-inner">
         <button onclick="router('kayit')" id="nav-kayit" class="tab-btn active-tab">📝 KAYIT</button>
@@ -34,11 +33,12 @@
 
     <main id="app-view" class="p-6"></main>
 
+    <div id="pdf-zone" class="hidden" style="position:absolute; left:-9999px;"></div>
+
     <script>
         const DB = new Dexie("StoreAnalytics");
-        DB.version(1).stores({ products: "barkod, n, p" });
-        let scanner = null;
-        let pB64 = "", tB64 = "";
+        DB.version(1).stores({ products: "barkod, n, p", analysis: "++id" });
+        let scanner = null, pB64 = "", tB64 = "";
 
         async function startCamera() {
             document.getElementById('sc-container').classList.remove('hidden');
@@ -47,19 +47,22 @@
                 const bInput = document.getElementById('regB') || document.getElementById('searchIn');
                 if(bInput) bInput.value = text;
                 stopCamera();
-            }).catch(err => alert("Kamera izni gerekli!"));
+            }).catch(() => alert("Kamera hatası!"));
         }
 
-        function stopCamera() {
-            if(scanner) scanner.stop().then(() => document.getElementById('sc-container').classList.add('hidden'));
+        function stopCamera() { if(scanner) scanner.stop().then(() => document.getElementById('sc-container').classList.add('hidden')); }
+
+        function handleImg(input, type) {
+            const r = new FileReader();
+            r.readAsDataURL(input.files[0]);
+            r.onload = e => { if(type==='p') pB64=e.target.result; else tB64=e.target.result; alert("Resim hazır!"); };
         }
 
         async function saveToPool() {
             const b = document.getElementById('regB').value, n = document.getElementById('regN').value, p = document.getElementById('regP').value;
-            if(!b || !n) return alert("Barkod ve İsim zorunlu!");
-            await DB.products.put({ barkod: b, n: n.toUpperCase(), p, img: pB64 });
-            alert("Havuza Eklendi! ✅");
-            router('havuz');
+            if(!b || !n) return alert("Eksik veri!");
+            await DB.products.put({ barkod: b, n: n.toUpperCase(), p, img: pB64, timg: tB64 });
+            alert("Havuza Kaydedildi! ✅"); router('havuz');
         }
 
         const router = async (page) => {
@@ -68,37 +71,29 @@
             const view = document.getElementById('app-view');
 
             if(page === 'kayit') {
-                view.innerHTML = `<div class="bg-white p-6 space-y-4 rounded-[32px] shadow-xl border border-gray-50">
+                view.innerHTML = `<div class="bg-white p-6 space-y-4 rounded-[32px] shadow-xl">
                     <div class="flex gap-2">
                         <input id="regB" placeholder="BARKOD" class="input-elite flex-1 uppercase">
-                        <button onclick="startCamera()" class="bg-orange-500 text-white px-5 rounded-2xl font-bold">📷</button>
+                        <button onclick="startCamera()" class="bg-orange-500 text-white px-5 rounded-2xl">📷</button>
                     </div>
                     <input id="regN" placeholder="ÜRÜN ADI" class="input-elite uppercase">
                     <input id="regP" placeholder="FİYAT" class="input-elite">
                     <div class="grid grid-cols-2 gap-3">
-                        <div onclick="document.getElementById('f1').click()" class="bg-slate-50 border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer">
-                            <span class="text-[9px] font-bold text-slate-400 uppercase">Ürün Foto</span>
-                            <input type="file" id="f1" class="hidden" onchange="readImg(this)">
-                        </div>
+                        <div onclick="document.getElementById('f1').click()" class="bg-slate-50 border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer text-[10px] font-bold text-slate-400 uppercase">Ürün Foto<input type="file" id="f1" class="hidden" onchange="handleImg(this,'p')"></div>
+                        <div onclick="document.getElementById('f2').click()" class="bg-orange-50 border-2 border-dashed border-orange-200 rounded-2xl p-4 text-center cursor-pointer text-[10px] font-bold text-orange-400 uppercase">Teşhir Foto<input type="file" id="f2" class="hidden" onchange="handleImg(this,'t')"></div>
                     </div>
-                    <button onclick="saveToPool()" class="w-full bg-slate-900 text-white p-5 rounded-3xl font-black uppercase shadow-lg active:scale-95 transition">HAVUZA EKLE</button>
+                    <button onclick="saveToPool()" class="w-full bg-slate-900 text-white p-5 rounded-3xl font-black uppercase shadow-lg">HAVUZA EKLE</button>
                 </div>`;
             } else if(page === 'havuz') {
                 const ps = await DB.products.toArray();
                 view.innerHTML = `<div class="grid grid-cols-2 gap-4">
-                    ${ps.map(p => `<div class="bg-white p-4 rounded-3xl border text-center shadow-sm">
+                    ${ps.map(p => `<div class="bg-white p-4 rounded-3xl border shadow-sm text-center">
+                        <img src="${p.img || ''}" class="h-16 w-full object-contain mb-2">
                         <p class="font-black uppercase text-[10px] truncate">${p.n}</p>
-                        <p class="text-emerald-600 font-bold text-xs">${p.p} TL</p>
                     </div>`).join('')}
-                </div>`;
+                </div><button onclick="localStorage.clear(); alert('Sıfırlandı'); location.reload();" class="w-full mt-8 bg-red-100 text-red-600 p-4 rounded-2xl text-[10px] font-black uppercase">⚠️ Eski Havuzu Temizle</button>`;
             }
         };
-
-        function readImg(input) {
-            const reader = new FileReader();
-            reader.onload = e => pB64 = e.target.result;
-            reader.readAsDataURL(input.files[0]);
-        }
 
         router('kayit');
     </script>
