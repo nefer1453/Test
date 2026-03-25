@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>SKT KONTROL - PREMIUM</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#10b981">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%230f5c3f'/%3E%3Ctext x='50' y='70' font-size='60' text-anchor='middle' fill='%23e8b87a' font-weight='bold'%3ES%3C/text%3E%3Ctext x='70' y='85' font-size='25' text-anchor='middle' fill='white'%3E2%3C/text%3E%3C/svg%3E">
+
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -53,10 +58,9 @@
         DB.version(1).stores({ products: "barkod, n, p, img, timg" });
         
         let scanner = null, queue = [];
-        let pB64 = "", tB64 = "", cB64 = ""; // cB64: Cover Image
+        let pB64 = "", tB64 = "", cB64 = "";
         let selectedProduct = null;
 
-        // --- KAMERA ---
         function startCamera() {
             document.getElementById('sc-container').classList.remove('hidden');
             scanner = new Html5Qrcode("reader");
@@ -69,7 +73,6 @@
         }
         function stopCamera() { if(scanner) scanner.stop().then(() => document.getElementById('sc-container').classList.add('hidden')); }
 
-        // --- RESİM OKUMA ---
         function readImg(input, type) {
             const r = new FileReader();
             r.readAsDataURL(input.files[0]);
@@ -80,13 +83,12 @@
             };
         }
 
-        // --- HAVUZ YÖNETİMİ ---
         async function saveProduct() {
             const b = document.getElementById('regB').value, n = document.getElementById('regN').value;
             if(!b || !n) return alert("Barkod ve Ürün Adı zorunludur!");
             await DB.products.put({ barkod: b, n: n.toUpperCase(), p: document.getElementById('regP').value, img: pB64, timg: tB64 });
             alert("Havuza Kaydedildi!");
-            pB64 = ""; tB64 = ""; // Reset
+            pB64 = ""; tB64 = ""; 
             router('havuz');
         }
 
@@ -118,7 +120,6 @@
             alert("Eski veriler aktarıldı!"); router('havuz');
         }
 
-        // --- ANALİZ VE PDF ---
         async function searchPool(v) {
             const res = document.getElementById('search-res');
             if(v.length < 2) return res.classList.add('hidden');
@@ -147,7 +148,6 @@
             document.getElementById('q-count').innerText = queue.length + " ÜRÜN";
             alert("Analiz sıraya eklendi!");
             
-            // Alanları temizle
             document.getElementById('ns').value = ""; document.getElementById('is').value = ""; document.getElementById('note').value = "";
             selectedProduct = null; document.getElementById('sel-box').innerHTML = ""; document.getElementById('searchIn').value = "";
         }
@@ -162,7 +162,6 @@
             document.getElementById('report-bar').style.display = 'none';
             alert("Rapor derleniyor, bu işlem birkaç saniye sürebilir...");
 
-            // 1. ANA KAPAK SAYFASI
             pageTpl.innerHTML = `
             <div style="width:794px; height:1123px; background:#0f172a; position:relative; font-family:sans-serif; display:flex; flex-direction:column; justify-content:center; align-items:center;">
                 ${cB64 ? `<img src="${cB64}" style="position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; opacity:0.4;">` : ''}
@@ -176,11 +175,9 @@
             const cCover = await html2canvas(pageTpl, { scale: 1.5 });
             pdf.addImage(cCover.toDataURL('image/jpeg', 0.8), 'JPEG', 0, 0, 210, 297);
 
-            // 2. ÜRÜN SAYFALARI
             for(let i=0; i < queue.length; i++) {
                 const item = queue[i];
                 
-                // Ürün Sayfa 1: Teşhir Aksiyonu
                 pdf.addPage();
                 pageTpl.innerHTML = `
                 <div style="width:794px; height:1123px; background:#ffffff; font-family:sans-serif; display:flex; flex-direction:column;">
@@ -195,7 +192,6 @@
                 const c1 = await html2canvas(pageTpl, { scale: 1.5 });
                 pdf.addImage(c1.toDataURL('image/jpeg', 0.8), 'JPEG', 0, 0, 210, 297);
 
-                // Ürün Sayfa 2: Analiz Künyesi
                 pdf.addPage();
                 pageTpl.innerHTML = `
                 <div style="width:794px; height:1123px; background:#f8fafc; font-family:sans-serif; padding:60px; box-sizing:border-box;">
@@ -230,7 +226,7 @@
 
             pageTpl.classList.add('hidden');
             pdf.save(`${insertName.replace(/\s+/g, '_')}_Raporu.pdf`);
-            queue = []; // Reset queue
+            queue = [];
         }
 
         const router = async (page) => {
@@ -315,6 +311,15 @@
                 <button onclick="recoverOldData()" class="w-full mt-8 bg-slate-100 text-slate-500 p-5 rounded-3xl font-black text-[10px] uppercase shadow-sm">🔄 Eski Verileri Getir</button>`;
             }
         };
+
+        // --- PWA SERVICE WORKER AKTİVASYONU ---
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(reg => console.log('PWA Aktif!'))
+                    .catch(err => console.error('PWA Hatası:', err));
+            });
+        }
 
         router('kayit');
     </script>
