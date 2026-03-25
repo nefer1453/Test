@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>İNSERT ANALİZ - PREMIUM v36.0</title>
+    <title>İNSERT ANALİZ - PREMIUM</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -11,20 +11,20 @@
     <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800;900&display=swap');
-        body { font-family: 'Plus Jakarta Sans', sans-serif; background: #f8fafc; margin: 0; }
-        .tab-btn { flex: 1; padding: 18px; font-weight: 800; text-transform: uppercase; font-size: 0.7rem; background: #f3f4f6; color: #64748b; border: none; }
-        .active-tab { background: #ffffff !important; color: #10b981 !important; box-shadow: 0 10px 20px rgba(0,0,0,0.05); border-radius: 12px; }
-        .input-elite { background: #ffffff; border: 2px solid #e2e8f0; border-radius: 16px; padding: 16px; width: 100%; font-weight: 600; outline: none; text-align: center; }
-        .input-elite:focus { border-color: #10b981; }
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background: #f8fafc; margin: 0; color: #1e293b; }
+        .tab-btn { flex: 1; padding: 20px; font-weight: 800; text-transform: uppercase; font-size: 0.7rem; background: #f1f5f9; color: #64748b; border: none; transition: 0.3s; }
+        .active-tab { background: #ffffff !important; color: #10b981 !important; box-shadow: 0 10px 25px rgba(0,0,0,0.05); z-index: 10; border-radius: 12px; }
+        .input-elite { background: #ffffff; border: 2px solid #e2e8f0; border-radius: 18px; padding: 16px; width: 100%; font-weight: 700; outline: none; text-align: center; transition: 0.3s; }
+        .input-elite:focus { border-color: #10b981; box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.1); }
     </style>
 </head>
 <body class="max-w-md mx-auto min-h-screen pb-32">
-    <header class="p-8 text-center bg-white border-b border-gray-100">
-        <h1 class="text-2xl font-black italic uppercase">SOĞANLIK 2 PREMIUM</h1>
-        <p class="text-[9px] text-emerald-600 font-bold tracking-[4px]">STORE ANALYTICS</p>
+    <header class="p-10 text-center">
+        <h1 class="text-3xl font-black italic tracking-tighter uppercase">SOĞANLIK 2</h1>
+        <p class="text-[10px] text-emerald-600 font-bold tracking-[5px] uppercase">Premium Analytics</p>
     </header>
 
-    <nav class="flex mx-4 p-1 rounded-2xl bg-gray-100 shadow-inner -mt-4 relative z-10">
+    <nav class="flex mx-4 p-1 rounded-2xl bg-slate-200/50 shadow-inner -mt-6 relative z-10">
         <button onclick="router('kayit')" id="nav-kayit" class="tab-btn active-tab">📝 KAYIT</button>
         <button onclick="router('analiz')" id="nav-analiz" class="tab-btn">📈 ANALİZ</button>
         <button onclick="router('havuz')" id="nav-havuz" class="tab-btn">📋 HAVUZ</button>
@@ -37,121 +37,140 @@
 
     <main id="app-view" class="p-6"></main>
 
-    <div id="report-bar" class="fixed bottom-6 left-6 right-6 bg-slate-900 p-4 rounded-3xl shadow-2xl flex justify-between items-center hidden z-40">
-        <span id="q-count" class="text-white font-black text-xs ml-2 uppercase">0 Ürün Sırada</span>
-        <button onclick="alert('PDF Hazırlanıyor...')" class="bg-emerald-500 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase">PDF BAS</button>
-    </div>
-
     <script>
-        const DB = new Dexie("StoreAnalytics");
+        // Veritabanı Tanımı
+        const DB = new Dexie("StoreAnalyticsDB");
         DB.version(1).stores({ products: "barkod, n, p", analysis: "++id" });
         
-        let scanner = null, pB64 = "", tB64 = "", selectedProduct = null, queue = [];
+        let scanner = null, pB64 = "", selectedProduct = null;
 
-        // --- VERİ KURTARMA (DÜZELTİLDİ) ---
+        // --- ESKİ VERİLERİ GETİR (DÜZELTİLDİ) ---
         async function recoverOldData() {
-            try {
-                let oldPool = JSON.parse(localStorage.getItem('pool')) || [];
-                if(oldPool.length === 0) return alert("Eski veriler bulunamadı!");
-                
-                for(let item of oldPool) {
-                    await DB.products.put({ 
-                        barkod: item.barcode || "0000", 
-                        n: (item.name || "İSİMSİZ").toUpperCase(), 
-                        p: item.price || "0", 
-                        img: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eee'/%3E%3C/svg%3E" 
-                    });
-                }
-                alert("Başarıyla aktarıldı! ✅");
-                router('havuz');
-            } catch(e) { alert("Hata: " + e); }
+            const oldData = JSON.parse(localStorage.getItem('pool')) || [];
+            if(oldData.length === 0) return alert("Tarayıcıda eski veri bulunamadı!");
+            
+            for(let item of oldData) {
+                await DB.products.put({
+                    barkod: item.barcode || Math.random().toString().slice(2,10),
+                    n: (item.name || "İSİMSİZ").toUpperCase(),
+                    p: item.price || "0",
+                    img: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eee'/%3E%3C/svg%3E"
+                });
+            }
+            alert(oldData.length + " ürün aktarıldı! ✅");
+            router('havuz');
         }
 
-        // --- ANALİZ ÜRÜN SEÇME ---
-        async function selectForAnalysis(barkod) {
+        // --- HAVUZDAN ÜRÜN SEÇME (DÜZELTİLDİ) ---
+        async function selectProduct(barkod) {
             const p = await DB.products.get(barkod);
             if(p) {
                 selectedProduct = p;
-                document.getElementById('sel-box').innerHTML = `
-                    <div class="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 flex items-center gap-4">
-                        <img src="${p.img || ''}" class="w-12 h-12 rounded-lg object-cover bg-white">
+                const box = document.getElementById('sel-box');
+                box.innerHTML = `
+                    <div class="bg-emerald-50 p-5 rounded-3xl border-2 border-emerald-100 flex items-center gap-4 animate-pulse">
+                        <img src="${p.img || ''}" class="w-14 h-14 rounded-xl object-cover bg-white shadow-sm">
                         <div class="text-left">
-                            <p class="font-black text-[10px] text-emerald-800 uppercase">${p.n}</p>
-                            <p class="text-[9px] text-emerald-600 font-bold">${p.barkod} | ${p.p} TL</p>
+                            <p class="font-black text-xs text-emerald-900 uppercase">${p.n}</p>
+                            <p class="text-[10px] text-emerald-600 font-bold">${p.barkod} | ${p.p} TL</p>
                         </div>
                     </div>`;
                 document.getElementById('search-res').classList.add('hidden');
+                document.getElementById('searchIn').value = p.n;
             }
         }
 
         async function searchPool(v) {
             const res = document.getElementById('search-res');
             if(v.length < 2) return res.classList.add('hidden');
-            const matches = await DB.products.filter(p => p.n.includes(v.toUpperCase()) || p.barkod.includes(v)).toArray();
-            res.innerHTML = matches.map(p => `<div onclick="selectForAnalysis('${p.barkod}')" class="p-4 border-b font-bold text-xs uppercase cursor-pointer hover:bg-gray-50">${p.n}</div>`).join('');
-            res.classList.remove('hidden');
+            const matches = await DB.products.filter(p => 
+                p.n.toLowerCase().includes(v.toLowerCase()) || 
+                p.barkod.includes(v)
+            ).toArray();
+            
+            if(matches.length > 0) {
+                res.innerHTML = matches.map(p => `
+                    <div onclick="selectProduct('${p.barkod}')" class="p-5 border-b border-gray-50 font-bold text-xs uppercase cursor-pointer hover:bg-emerald-50 flex justify-between">
+                        <span>${p.n}</span>
+                        <span class="text-gray-400 font-normal">${p.barkod}</span>
+                    </div>`).join('');
+                res.classList.remove('hidden');
+            } else {
+                res.innerHTML = '<p class="p-4 text-xs text-center text-gray-400">Ürün bulunamadı</p>';
+                res.classList.remove('hidden');
+            }
         }
 
         const router = async (page) => {
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active-tab'));
-            document.getElementById('nav-' + page).classList.add('active-tab');
+            const b = document.getElementById('nav-' + page); if(b) b.classList.add('active-tab');
             const view = document.getElementById('app-view');
 
             if(page === 'kayit') {
-                view.innerHTML = `<div class="bg-white p-6 space-y-4 rounded-[32px] shadow-xl border">
+                view.innerHTML = `<div class="bg-white p-6 space-y-4 rounded-[35px] shadow-xl border border-gray-50">
                     <div class="flex gap-2">
-                        <input id="regB" placeholder="BARKOD" class="input-elite flex-1 uppercase">
-                        <button onclick="startCamera()" class="bg-orange-500 text-white px-5 rounded-2xl font-bold">📷</button>
+                        <input id="regB" placeholder="BARKOD OKUT" class="input-elite flex-1 uppercase">
+                        <button onclick="startCamera()" class="bg-orange-500 text-white px-6 rounded-2xl shadow-lg active:scale-90 transition">📷</button>
                     </div>
                     <input id="regN" placeholder="ÜRÜN ADI" class="input-elite uppercase">
-                    <input id="regP" placeholder="FİYAT" class="input-elite">
+                    <input id="regP" placeholder="SATIŞ FİYATI" class="input-elite">
                     <div class="grid grid-cols-2 gap-3">
-                        <div onclick="document.getElementById('f1').click()" class="bg-slate-50 border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer text-[10px] font-bold text-slate-400 uppercase">Ürün Foto<input type="file" id="f1" class="hidden" onchange="readImg(this)"></div>
-                        <div onclick="document.getElementById('f2').click()" class="bg-orange-50 border-2 border-dashed border-orange-200 rounded-2xl p-4 text-center cursor-pointer text-[10px] font-bold text-orange-400 uppercase text-xs">📷 Teşhir<input type="file" id="f2" class="hidden"></div>
+                        <div onclick="document.getElementById('f1').click()" class="bg-slate-50 border-2 border-dashed rounded-2xl p-5 text-center cursor-pointer">
+                            <span class="text-[9px] font-black text-slate-400 uppercase">Ürün Foto</span>
+                            <input type="file" id="f1" class="hidden" onchange="readImg(this)">
+                        </div>
+                        <div class="bg-orange-50 border-2 border-dashed border-orange-100 rounded-2xl p-5 text-center opacity-50">
+                            <span class="text-[9px] font-black text-orange-300 uppercase italic">Teşhir Foto</span>
+                        </div>
                     </div>
-                    <button onclick="saveToPool()" class="w-full bg-slate-900 text-white p-5 rounded-3xl font-black uppercase">Havuza Kaydet</button>
+                    <button onclick="saveToPool()" class="w-full bg-slate-900 text-white p-5 rounded-[20px] font-black uppercase shadow-xl active:scale-95 transition">Havuza Kaydet</button>
                 </div>`;
             } else if(page === 'analiz') {
-                view.innerHTML = `<div class="bg-white p-6 space-y-4 rounded-[32px] shadow-xl border">
-                    <div class="flex gap-2">
-                        <input id="searchIn" onkeyup="searchPool(this.value)" placeholder="HAVUZDA ARA..." class="input-elite flex-1 uppercase">
-                        <button onclick="startCamera()" class="bg-orange-500 text-white px-5 rounded-2xl">📷</button>
+                view.innerHTML = `<div class="bg-white p-6 space-y-4 rounded-[35px] shadow-xl border border-gray-50">
+                    <div class="relative">
+                        <input id="searchIn" onkeyup="searchPool(this.value)" placeholder="HAVUZDAN ÜRÜN ÇEK..." class="input-elite uppercase">
+                        <div id="search-res" class="absolute left-0 right-0 mt-2 bg-white border rounded-2xl shadow-2xl max-h-60 overflow-auto z-50 hidden"></div>
                     </div>
-                    <div id="search-res" class="hidden bg-white border rounded-2xl max-h-40 overflow-auto shadow-2xl"></div>
                     <div id="sel-box"></div>
-                    <div class="grid grid-cols-2 gap-3"><input id="ns" placeholder="NORMAL SATIŞ" class="input-elite"><input id="is" placeholder="İNSERT SATIŞ" class="input-elite text-orange-600"></div>
-                    <textarea id="note" placeholder="SAHA NOTU (Rakip durumu, konum vb.)" class="input-elite h-24 text-left p-4 text-sm"></textarea>
-                    <button onclick="alert('Sıraya Eklendi')" class="w-full bg-emerald-600 text-white p-5 rounded-3xl font-black uppercase">Sıraya Ekle +</button>
+                    <div class="grid grid-cols-2 gap-3">
+                        <input id="ns" placeholder="NORM. SATIŞ" class="input-elite">
+                        <input id="is" placeholder="İNS. SATIŞ" class="input-elite text-orange-600">
+                    </div>
+                    <textarea id="note" placeholder="Saha Analizi: Rakip fiyatları, ürün konumu, müşteri tepkisi..." class="input-elite h-28 text-left p-4 text-xs font-medium"></textarea>
+                    <button onclick="alert('Rapor Sırasına Eklendi!')" class="w-full bg-emerald-600 text-white p-5 rounded-[20px] font-black uppercase shadow-lg">Analizi Sıraya Ekle</button>
                 </div>`;
             } else if(page === 'havuz') {
                 const ps = await DB.products.toArray();
-                view.innerHTML = `<div class="grid grid-cols-2 gap-4">
-                    ${ps.map(p => `<div class="bg-white p-4 rounded-3xl border shadow-sm text-center">
-                        <p class="font-black uppercase text-[10px] truncate">${p.n}</p>
-                        <p class="text-emerald-600 font-bold text-[9px]">${p.p} TL</p>
+                view.innerHTML = `
+                <div class="grid grid-cols-2 gap-4">
+                    ${ps.map(p => `<div class="bg-white p-4 rounded-3xl border border-gray-100 shadow-sm text-center">
+                        <img src="${p.img || ''}" class="h-16 w-full object-contain mb-2 opacity-80">
+                        <p class="font-black uppercase text-[9px] truncate">${p.n}</p>
+                        <p class="text-emerald-600 font-bold text-[10px]">${p.p} TL</p>
                     </div>`).join('')}
                 </div>
-                <button onclick="recoverOldData()" class="w-full mt-8 bg-red-600 text-white p-5 rounded-3xl font-black text-[10px] uppercase shadow-lg">⚠️ Eski Verileri Getir</button>`;
+                <button onclick="recoverOldData()" class="w-full mt-10 bg-indigo-600 text-white p-5 rounded-3xl font-black text-[10px] uppercase shadow-2xl active:scale-95 transition">🔄 Eski Havuzu Buraya Aktar</button>`;
             }
         };
 
+        // Yardımcı Fonksiyonlar
         function startCamera() {
             document.getElementById('sc-container').classList.remove('hidden');
             scanner = new Html5Qrcode("reader");
-            scanner.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, (text) => {
+            scanner.start({ facingMode: "environment" }, { fps: 15, qrbox: 250 }, (text) => {
                 const bInput = document.getElementById('regB') || document.getElementById('searchIn');
                 if(bInput) bInput.value = text;
                 if(document.getElementById('searchIn')) searchPool(text);
                 stopCamera();
-            }).catch(() => alert("Kamera hatası!"));
+            }).catch(() => alert("Kamera başlatılamadı!"));
         }
         function stopCamera() { if(scanner) scanner.stop().then(() => document.getElementById('sc-container').classList.add('hidden')); }
         function readImg(input) { const r = new FileReader(); r.onload = e => pB64 = e.target.result; r.readAsDataURL(input.files[0]); }
         async function saveToPool() {
             const b = document.getElementById('regB').value, n = document.getElementById('regN').value, p = document.getElementById('regP').value;
-            if(!b || !n) return alert("Eksik veri!");
+            if(!b || !n) return alert("Barkod ve İsim girmelisiniz!");
             await DB.products.put({ barkod: b, n: n.toUpperCase(), p, img: pB64 });
-            alert("Kaydedildi!"); router('havuz');
+            alert("Ürün Havuzda! ✅"); router('havuz');
         }
 
         router('kayit');
