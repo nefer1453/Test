@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>İNSERT ANALİZ - PREMIUM</title>
+    <title>SKT KONTROL - PREMIUM</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -12,14 +12,18 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800;900&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; background: #f8fafc; margin: 0; color: #1e293b; overflow-x: hidden; }
-        .tab-btn { flex: 1; padding: 18px; font-weight: 800; text-transform: uppercase; font-size: 0.7rem; background: #f1f5f9; color: #64748b; border: none; }
+        .tab-btn { flex: 1; padding: 18px; font-weight: 800; text-transform: uppercase; font-size: 0.7rem; background: #f1f5f9; color: #64748b; border: none; transition: 0.3s; }
         .active-tab { background: #ffffff !important; color: #10b981 !important; box-shadow: 0 10px 20px rgba(0,0,0,0.05); border-radius: 12px; }
-        .input-elite { background: #ffffff; border: 2px solid #e2e8f0; border-radius: 16px; padding: 16px; width: 100%; font-weight: 700; outline: none; text-align: center; }
-        #report-bar { position: fixed; bottom: 20px; left: 20px; right: 20px; background: #0f172a; padding: 20px; border-radius: 24px; display: none; justify-content: space-between; align-items: center; color: white; z-index: 1000; box-shadow: 0 20px 50px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); }
+        .input-elite { background: #ffffff; border: 2px solid #e2e8f0; border-radius: 16px; padding: 16px; width: 100%; font-weight: 700; outline: none; text-align: center; transition: 0.3s; }
+        .input-elite:focus { border-color: #10b981; box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.1); }
+        #report-bar { position: fixed; bottom: 20px; left: 20px; right: 20px; background: #0f172a; padding: 20px; border-radius: 24px; display: none; justify-content: space-between; align-items: center; color: white; z-index: 1000; box-shadow: 0 20px 50px rgba(0,0,0,0.3); }
     </style>
 </head>
 <body class="max-w-md mx-auto min-h-screen pb-40">
-    <header class="p-8 text-center"><h1 class="text-2xl font-black italic uppercase">SOĞANLIK 2</h1></header>
+    <header class="p-8 text-center">
+        <h1 class="text-3xl font-black italic tracking-tighter uppercase text-emerald-800">SKT KONTROL</h1>
+        <p class="text-[10px] text-emerald-600 font-bold tracking-[4px] uppercase">Soğanlık 2 Şarküteri</p>
+    </header>
 
     <nav class="flex mx-4 p-1 rounded-2xl bg-slate-200/50 shadow-inner -mt-6 relative z-10">
         <button onclick="router('kayit')" id="nav-kayit" class="tab-btn active-tab">📝 KAYIT</button>
@@ -27,63 +31,290 @@
         <button onclick="router('havuz')" id="nav-havuz" class="tab-btn">📋 HAVUZ</button>
     </nav>
 
+    <div id="sc-container" class="px-6 mt-8 hidden">
+        <div id="reader" class="rounded-3xl overflow-hidden border-4 border-emerald-500 shadow-2xl bg-black"></div>
+        <button onclick="stopCamera()" class="w-full mt-4 bg-red-500 text-white p-4 rounded-2xl font-bold uppercase text-xs">Kamerayı Kapat</button>
+    </div>
+
     <main id="app-view" class="p-6"></main>
 
     <div id="report-bar">
         <div class="flex flex-col">
             <span id="q-count" class="font-black text-emerald-400 text-sm">0 ÜRÜN</span>
-            <span class="text-[8px] uppercase opacity-60">Rapor Sırası Bekliyor</span>
+            <span class="text-[8px] uppercase opacity-60 font-bold">PDF Sırası Bekliyor</span>
         </div>
-        <button onclick="generatePDF()" class="bg-emerald-500 text-white px-6 py-3 rounded-xl font-black text-[10px] uppercase shadow-lg">PDF OLUŞTUR</button>
+        <button onclick="generatePDF()" class="bg-emerald-500 text-white px-6 py-3 rounded-xl font-black text-[10px] uppercase shadow-lg active:scale-95 transition-all">PDF OLUŞTUR 📄</button>
     </div>
 
     <div id="pdf-tpl" class="hidden" style="position: absolute; left: -9999px;"></div>
 
     <script>
         const DB = new Dexie("StoreAnalyticsDB");
-        DB.version(1).stores({ products: "barkod, n, p", analysis: "++id" });
-        let pB64 = "", tB64 = "", selectedProduct = null, queue = [];
+        DB.version(1).stores({ products: "barkod, n, p, img, timg" });
+        
+        let scanner = null, queue = [];
+        let pB64 = "", tB64 = "", cB64 = ""; // cB64: Cover Image
+        let selectedProduct = null;
+
+        // --- KAMERA ---
+        function startCamera() {
+            document.getElementById('sc-container').classList.remove('hidden');
+            scanner = new Html5Qrcode("reader");
+            scanner.start({ facingMode: "environment" }, { fps: 15, qrbox: 250 }, (text) => {
+                const bInput = document.getElementById('regB') || document.getElementById('searchIn');
+                if(bInput) bInput.value = text;
+                if(document.getElementById('searchIn')) searchPool(text);
+                stopCamera();
+            }).catch(() => alert("Kamera başlatılamadı!"));
+        }
+        function stopCamera() { if(scanner) scanner.stop().then(() => document.getElementById('sc-container').classList.add('hidden')); }
+
+        // --- RESİM OKUMA ---
+        function readImg(input, type) {
+            const r = new FileReader();
+            r.readAsDataURL(input.files[0]);
+            r.onload = e => { 
+                if(type === 'p') { pB64 = e.target.result; document.getElementById('ps').innerText = "✅ ÜRÜN OK"; document.getElementById('ps').classList.add('text-emerald-500'); }
+                else if(type === 't') { tB64 = e.target.result; document.getElementById('ts').innerText = "✅ TEŞHİR OK"; document.getElementById('ts').classList.add('text-emerald-500'); }
+                else if(type === 'c') { cB64 = e.target.result; document.getElementById('cs').innerText = "✅ KAPAK FOTO OK"; document.getElementById('cs').classList.add('text-emerald-500'); }
+            };
+        }
+
+        // --- HAVUZ YÖNETİMİ ---
+        async function saveProduct() {
+            const b = document.getElementById('regB').value, n = document.getElementById('regN').value;
+            if(!b || !n) return alert("Barkod ve Ürün Adı zorunludur!");
+            await DB.products.put({ barkod: b, n: n.toUpperCase(), p: document.getElementById('regP').value, img: pB64, timg: tB64 });
+            alert("Havuza Kaydedildi!");
+            pB64 = ""; tB64 = ""; // Reset
+            router('havuz');
+        }
+
+        async function deleteP(b) {
+            if(confirm('Silmek istediğinize emin misiniz?')) { await DB.products.delete(b); router('havuz'); }
+        }
+
+        async function editP(barkod) {
+            const p = await DB.products.get(barkod);
+            if(p) {
+                router('kayit');
+                setTimeout(() => {
+                    document.getElementById('regB').value = p.barkod;
+                    document.getElementById('regN').value = p.n;
+                    document.getElementById('regP').value = p.p;
+                    pB64 = p.img || ""; tB64 = p.timg || "";
+                    if(pB64) { document.getElementById('ps').innerText = "✅ ÜRÜN YÜKLÜ"; }
+                    if(tB64) { document.getElementById('ts').innerText = "✅ TEŞHİR YÜKLÜ"; }
+                }, 100);
+            }
+        }
+
+        async function recoverOldData() {
+            const oldData = JSON.parse(localStorage.getItem('pool')) || [];
+            if(oldData.length === 0) return alert("Eski veri bulunamadı.");
+            for(let item of oldData) {
+                await DB.products.put({ barkod: item.barcode || Math.random().toString(), n: (item.name || "").toUpperCase(), p: item.price || "", img: "", timg: "" });
+            }
+            alert("Eski veriler aktarıldı!"); router('havuz');
+        }
+
+        // --- ANALİZ VE PDF ---
+        async function searchPool(v) {
+            const res = document.getElementById('search-res');
+            if(v.length < 2) return res.classList.add('hidden');
+            const matches = await DB.products.filter(p => p.n.toLowerCase().includes(v.toLowerCase()) || p.barkod.includes(v)).toArray();
+            res.innerHTML = matches.map(p => `<div onclick="selectP('${p.barkod}')" class="p-4 border-b font-bold text-xs uppercase cursor-pointer hover:bg-slate-50">${p.n}</div>`).join('');
+            res.classList.remove('hidden');
+        }
+
+        async function selectP(b) {
+            selectedProduct = await DB.products.get(b);
+            document.getElementById('sel-box').innerHTML = `<div class="bg-emerald-50 p-4 rounded-2xl border border-emerald-200 flex items-center gap-4"><img src="${selectedProduct.img || ''}" class="w-12 h-12 rounded-lg object-cover bg-white"><div class="text-left"><p class="font-black text-xs text-emerald-900 uppercase">${selectedProduct.n}</p><p class="text-[10px] text-emerald-600 font-bold">${selectedProduct.p} TL</p></div></div>`;
+            document.getElementById('search-res').classList.add('hidden');
+            document.getElementById('searchIn').value = selectedProduct.n;
+        }
+
+        function addToQueue() {
+            if(!selectedProduct) return alert("Lütfen havuzdan ürün seçin!");
+            const ns = document.getElementById('ns').value;
+            const is = document.getElementById('is').value;
+            const op = document.getElementById('opType').value;
+            const note = document.getElementById('note').value;
+            
+            queue.push({ p: selectedProduct, ns, is, op, note });
+            
+            document.getElementById('report-bar').style.display = 'flex';
+            document.getElementById('q-count').innerText = queue.length + " ÜRÜN";
+            alert("Analiz sıraya eklendi!");
+            
+            // Alanları temizle
+            document.getElementById('ns').value = ""; document.getElementById('is').value = ""; document.getElementById('note').value = "";
+            selectedProduct = null; document.getElementById('sel-box').innerHTML = ""; document.getElementById('searchIn').value = "";
+        }
 
         async function generatePDF() {
+            const insertName = document.getElementById('insertName').value || "İNSERT DÖNEMİ";
             const { jsPDF } = window.jspdf;
             const pdf = new jsPDF('p', 'mm', 'a4');
+            const pageTpl = document.getElementById('pdf-tpl');
+            pageTpl.classList.remove('hidden');
+
+            document.getElementById('report-bar').style.display = 'none';
+            alert("Rapor derleniyor, bu işlem birkaç saniye sürebilir...");
+
+            // 1. ANA KAPAK SAYFASI
+            pageTpl.innerHTML = `
+            <div style="width:794px; height:1123px; background:#0f172a; position:relative; font-family:sans-serif; display:flex; flex-direction:column; justify-content:center; align-items:center;">
+                ${cB64 ? `<img src="${cB64}" style="position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; opacity:0.4;">` : ''}
+                <div style="z-index:10; border:15px solid #10b981; padding:80px; text-align:center; background:rgba(15,23,42,0.8); border-radius:40px; width:80%;">
+                    <h1 style="color:white; font-size:70px; font-weight:900; letter-spacing:4px; text-transform:uppercase; margin:0;">${insertName}</h1>
+                    <div style="height:5px; background:#10b981; width:150px; margin:40px auto;"></div>
+                    <h2 style="color:#10b981; font-size:45px; font-weight:800; margin:0;">SKT KONTROL</h2>
+                    <p style="color:#94a3b8; font-size:25px; font-weight:700; letter-spacing:6px; margin-top:20px;">SOĞANLIK 2 ŞARKÜTERİ</p>
+                </div>
+            </div>`;
+            const cCover = await html2canvas(pageTpl, { scale: 1.5 });
+            pdf.addImage(cCover.toDataURL('image/jpeg', 0.8), 'JPEG', 0, 0, 210, 297);
+
+            // 2. ÜRÜN SAYFALARI
             for(let i=0; i < queue.length; i++) {
                 const item = queue[i];
-                const page1 = document.getElementById('pdf-tpl');
-                page1.classList.remove('hidden');
-                page1.innerHTML = `<div style="width:794px; height:1123px; background:white; padding:40px;"><div style="background:#0f5c3f; color:white; padding:30px; border-radius:20px; font-size:30px; font-weight:bold; display:flex; justify-content:space-between;"><span>${item.p.n}</span><span style="color:#e8b87a">${item.op}</span></div><img src="${item.p.timg || item.p.img}" style="width:100%; height:900px; object-fit:cover; border-radius:30px; margin-top:30px; box-shadow: 0 20px 40px rgba(0,0,0,0.2);"></div>`;
-                const c1 = await html2canvas(page1);
-                if(i > 0) pdf.addPage();
-                pdf.addImage(c1.toDataURL('image/jpeg', 0.8), 'JPEG', 0, 0, 210, 297);
-                page1.innerHTML = `<div style="width:794px; height:1123px; background:#fef9f0; padding:80px;"><h1 style="color:#0f5c3f; font-size:50px; font-weight:900;">${item.p.n}</h1><div style="display:flex; gap:40px; margin-top:60px;"><div style="background:white; padding:40px; border-radius:30px; flex:1; text-align:center; box-shadow:0 10px 30px rgba(0,0,0,0.05); border-bottom:10px solid #e2e8f0;"><p style="color:#64748b; font-weight:bold;">NORMAL SATIŞ</p><h2 style="font-size:60px;">${item.ns} AD</h2></div><div style="background:white; padding:40px; border-radius:30px; flex:1; text-align:center; box-shadow:0 10px 30px rgba(0,0,0,0.05); border-bottom:10px solid #e8b87a;"><p style="color:#e8b87a; font-weight:bold;">İNSERT SATIŞ</p><h2 style="font-size:60px; color:#0f5c3f;">${item.is} AD</h2></div></div><div style="background:white; padding:60px; border-radius:40px; margin-top:60px; min-height:400px; border:1px solid #eee;"><h3 style="color:#0f5c3f; font-size:24px; margin-bottom:20px;">SAHA GÖZLEMLERİ</h3><p style="font-size:24px; line-height:1.6; color:#334155;">${item.note}</p></div></div>`;
-                const c2 = await html2canvas(page1);
+                
+                // Ürün Sayfa 1: Teşhir Aksiyonu
                 pdf.addPage();
+                pageTpl.innerHTML = `
+                <div style="width:794px; height:1123px; background:#ffffff; font-family:sans-serif; display:flex; flex-direction:column;">
+                    <div style="background:#0f5c3f; color:white; padding:35px 50px; display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-size:32px; font-weight:900;">${item.p.n}</span>
+                        <span style="font-size:24px; font-weight:800; background:#e8b87a; color:#0f5c3f; padding:10px 25px; border-radius:15px;">${item.op.toUpperCase()}</span>
+                    </div>
+                    <div style="flex:1; padding:50px; display:flex; justify-content:center; align-items:center;">
+                        <img src="${item.p.timg || item.p.img || ''}" style="width:100%; max-height:850px; object-fit:contain; border-radius:30px; box-shadow:0 20px 50px rgba(0,0,0,0.15); border:5px solid #f1f5f9;">
+                    </div>
+                </div>`;
+                const c1 = await html2canvas(pageTpl, { scale: 1.5 });
+                pdf.addImage(c1.toDataURL('image/jpeg', 0.8), 'JPEG', 0, 0, 210, 297);
+
+                // Ürün Sayfa 2: Analiz Künyesi
+                pdf.addPage();
+                pageTpl.innerHTML = `
+                <div style="width:794px; height:1123px; background:#f8fafc; font-family:sans-serif; padding:60px; box-sizing:border-box;">
+                    <div style="display:flex; gap:40px; align-items:center; margin-bottom:50px;">
+                        <img src="${item.p.img || ''}" style="width:220px; height:220px; object-fit:cover; border-radius:40px; box-shadow:0 15px 35px rgba(0,0,0,0.1); border:8px solid white;">
+                        <div>
+                            <h1 style="color:#0f172a; font-size:55px; font-weight:900; margin:0; line-height:1.1;">${item.p.n}</h1>
+                            <p style="color:#64748b; font-size:24px; font-weight:700; margin-top:15px; letter-spacing:2px;">BARKOD: ${item.p.barkod}</p>
+                        </div>
+                    </div>
+                    
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:35px; margin-bottom:50px;">
+                        <div style="background:white; padding:45px; border-radius:35px; text-align:center; box-shadow:0 10px 25px rgba(0,0,0,0.03); border-bottom:12px solid #cbd5e1;">
+                            <p style="color:#64748b; font-weight:800; font-size:20px; margin-bottom:15px;">NORMAL SATIŞ</p>
+                            <h2 style="font-size:65px; color:#0f172a; margin:0; font-weight:900;">${item.ns} AD</h2>
+                        </div>
+                        <div style="background:white; padding:45px; border-radius:35px; text-align:center; box-shadow:0 10px 25px rgba(0,0,0,0.03); border-bottom:12px solid #10b981;">
+                            <p style="color:#10b981; font-weight:800; font-size:20px; margin-bottom:15px;">İNSERT SATIŞ</p>
+                            <h2 style="font-size:65px; color:#0f5c3f; margin:0; font-weight:900;">${item.is} AD</h2>
+                        </div>
+                    </div>
+
+                    <div style="background:white; padding:60px; border-radius:40px; border:1px solid #e2e8f0; min-height:400px; position:relative;">
+                        <h3 style="color:#3b82f6; font-size:26px; font-weight:900; margin-bottom:25px; text-transform:uppercase;">📊 Saha Analizi & Operasyon Notu</h3>
+                        <p style="font-size:26px; line-height:1.7; color:#334155; font-weight:500;">${item.note}</p>
+                        <div style="position:absolute; bottom:40px; right:50px; color:#cbd5e1; font-weight:900; font-size:18px;">SOĞANLIK 2 PREMIUM</div>
+                    </div>
+                </div>`;
+                const c2 = await html2canvas(pageTpl, { scale: 1.5 });
                 pdf.addImage(c2.toDataURL('image/jpeg', 0.8), 'JPEG', 0, 0, 210, 297);
-                page1.classList.add('hidden');
             }
-            pdf.save("Soganlik2_Analiz.pdf");
+
+            pageTpl.classList.add('hidden');
+            pdf.save(`${insertName.replace(/\s+/g, '_')}_Raporu.pdf`);
+            queue = []; // Reset queue
         }
 
         const router = async (page) => {
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active-tab'));
             document.getElementById('nav-' + page).classList.add('active-tab');
             const view = document.getElementById('app-view');
+
             if(page === 'kayit') {
-                view.innerHTML = `<div class="bg-white p-6 space-y-4 rounded-[35px] shadow-xl border"><input id="regB" placeholder="BARKOD" class="input-elite uppercase"><input id="regN" placeholder="ÜRÜN ADI" class="input-elite uppercase"><input id="regP" placeholder="FİYAT" class="input-elite"><div class="grid grid-cols-2 gap-3"><div onclick="document.getElementById('f1').click()" class="bg-slate-50 border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer"><span id="ps" class="text-[9px] font-black uppercase text-slate-400">Ürün Foto</span><input type="file" id="f1" class="hidden" onchange="readImg(this,'p')"></div><div onclick="document.getElementById('f2').click()" class="bg-orange-50 border-2 border-dashed border-orange-100 rounded-2xl p-4 text-center cursor-pointer"><span id="ts" class="text-[9px] font-black uppercase text-orange-400">Teşhir Foto</span><input type="file" id="f2" class="hidden" onchange="readImg(this,'t')"></div></div><button onclick="save()" class="w-full bg-slate-900 text-white p-5 rounded-3xl font-black uppercase shadow-lg active:scale-95 transition">Havuza Kaydet</button></div>`;
+                view.innerHTML = `
+                <div class="bg-white p-6 space-y-4 rounded-[32px] shadow-xl border border-gray-50">
+                    <div class="flex gap-2">
+                        <input id="regB" placeholder="BARKOD" class="input-elite uppercase flex-1">
+                        <button onclick="startCamera()" class="bg-emerald-600 text-white px-5 rounded-2xl shadow-lg active:scale-95 transition">📷</button>
+                    </div>
+                    <input id="regN" placeholder="ÜRÜN ADI" class="input-elite uppercase">
+                    <input id="regP" placeholder="SATIŞ FİYATI" class="input-elite">
+                    <div class="grid grid-cols-2 gap-3">
+                        <div onclick="document.getElementById('f1').click()" class="bg-slate-50 border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition hover:bg-slate-100">
+                            <span id="ps" class="text-[9px] font-black uppercase text-slate-400">Ürün Fotoğrafı</span>
+                            <input type="file" id="f1" class="hidden" onchange="readImg(this,'p')">
+                        </div>
+                        <div onclick="document.getElementById('f2').click()" class="bg-orange-50 border-2 border-dashed border-orange-200 rounded-2xl p-4 text-center cursor-pointer transition hover:bg-orange-100">
+                            <span id="ts" class="text-[9px] font-black uppercase text-orange-400">Teşhir Fotoğrafı</span>
+                            <input type="file" id="f2" class="hidden" onchange="readImg(this,'t')">
+                        </div>
+                    </div>
+                    <button onclick="saveProduct()" class="w-full bg-slate-900 text-white p-5 rounded-3xl font-black uppercase shadow-lg active:scale-95 transition">Havuza Kaydet</button>
+                </div>`;
             } else if(page === 'analiz') {
-                view.innerHTML = `<div class="bg-white p-6 space-y-4 rounded-[35px] shadow-xl border"><input id="searchIn" onkeyup="searchPool(this.value)" placeholder="HAVUZDAN ÇEK..." class="input-elite uppercase"><div id="search-res" class="hidden bg-white border rounded-2xl max-h-40 overflow-auto z-50"></div><div id="sel-box"></div><div class="grid grid-cols-2 gap-4"><input id="ns" placeholder="NORM. SATIŞ" class="input-elite"><input id="is" placeholder="İNS. SATIŞ" class="input-elite text-orange-600"></div><select id="opType" class="input-elite text-sm"><option>Gondol Başı</option><option>Sepet Teşhir</option><option>Havuz Dolabı</option><option>Kasa Önü</option><option>Reyon Blok</option></select><textarea id="note" placeholder="Saha Analiz Notu..." class="input-elite h-24 text-left p-4 text-xs font-medium"></textarea><button onclick="addToQueue()" class="w-full bg-emerald-600 text-white p-5 rounded-3xl font-black uppercase shadow-lg active:scale-95 transition">Sıraya Ekle +</button></div>`;
+                view.innerHTML = `
+                <div class="space-y-6">
+                    <div class="bg-slate-900 p-6 rounded-[32px] shadow-xl space-y-3">
+                        <p class="text-[10px] font-bold text-emerald-400 uppercase tracking-widest ml-2">Ana Kapak Ayarları</p>
+                        <input id="insertName" placeholder="Örn: 1-15 Nisan İnsert Dönemi" class="w-full bg-slate-800 text-white border-none rounded-xl p-4 font-bold outline-none text-center text-sm shadow-inner">
+                        <div onclick="document.getElementById('fc').click()" class="bg-slate-800 border-2 border-dashed border-slate-600 rounded-xl p-4 text-center cursor-pointer">
+                            <span id="cs" class="text-[10px] font-black uppercase text-slate-400">📷 Şube Dış Fotoğrafı Yükle</span>
+                            <input type="file" id="fc" class="hidden" onchange="readImg(this,'c')">
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-6 space-y-4 rounded-[32px] shadow-xl border border-gray-50 relative">
+                        <input id="searchIn" onkeyup="searchPool(this.value)" placeholder="HAVUZDAN ÜRÜN ÇEK..." class="input-elite uppercase">
+                        <div id="search-res" class="absolute left-6 right-6 mt-1 bg-white border rounded-2xl max-h-40 overflow-auto z-50 shadow-2xl hidden"></div>
+                        <div id="sel-box"></div>
+                        
+                        <div class="grid grid-cols-2 gap-3 mt-4">
+                            <input id="ns" placeholder="NORM. SATIŞ" class="input-elite">
+                            <input id="is" placeholder="İNS. SATIŞ" class="input-elite text-emerald-600">
+                        </div>
+                        
+                        <p class="text-[10px] font-bold text-slate-400 uppercase ml-2 mt-2">Yapılan Aksiyon</p>
+                        <select id="opType" class="input-elite text-sm appearance-none bg-gray-50">
+                            <option>Gondol Başı</option>
+                            <option>Sepet Teşhir</option>
+                            <option>Havuz Dolabı</option>
+                            <option>Kasa Önü</option>
+                            <option>Reyon Ön Yüz</option>
+                        </select>
+                        
+                        <textarea id="note" placeholder="Saha Analizi: Ürün neden sattı? Konum nasıldı? Rakip analizi..." class="input-elite h-28 text-left p-4 text-xs font-medium"></textarea>
+                        <button onclick="addToQueue()" class="w-full bg-emerald-600 text-white p-5 rounded-3xl font-black uppercase shadow-lg active:scale-95 transition mt-2">Analizi Sıraya Ekle</button>
+                    </div>
+                </div>`;
             } else if(page === 'havuz') {
                 const ps = await DB.products.toArray();
-                view.innerHTML = `<div class="space-y-3">${ps.map(p => `<div class="bg-white p-4 rounded-3xl border flex items-center justify-between shadow-sm"><div class="flex items-center gap-3"><img src="${p.img}" class="w-10 h-10 rounded-lg object-cover bg-gray-50"><p class="font-black uppercase text-[10px]">${p.n}</p></div><button onclick="deleteP('${p.barkod}')" class="text-red-500 font-black text-[10px] p-2">SİL</button></div>`).join('') || "Havuz Boş"}</div>`;
+                view.innerHTML = `<div class="space-y-3">
+                    ${ps.map(p => `
+                    <div class="bg-white p-4 rounded-3xl border border-gray-100 flex items-center justify-between shadow-sm">
+                        <div class="flex items-center gap-3">
+                            <img src="${p.img || ''}" class="w-12 h-12 rounded-lg object-cover bg-gray-50">
+                            <div class="text-left">
+                                <p class="font-black uppercase text-[10px] text-slate-800">${p.n}</p>
+                                <p class="text-[10px] text-emerald-600 font-bold">${p.barkod} | ${p.p} TL</p>
+                            </div>
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="editP('${p.barkod}')" class="bg-blue-50 text-blue-600 px-3 py-2 rounded-xl text-[10px] font-black uppercase transition active:scale-90">Düzenle</button>
+                            <button onclick="deleteP('${p.barkod}')" class="bg-red-50 text-red-600 px-3 py-2 rounded-xl text-[10px] font-black uppercase transition active:scale-90">Sil</button>
+                        </div>
+                    </div>`).join('') || "<p class='text-center text-xs font-bold text-gray-400 p-10'>Havuz Boş</p>"}
+                </div>
+                <button onclick="recoverOldData()" class="w-full mt-8 bg-slate-100 text-slate-500 p-5 rounded-3xl font-black text-[10px] uppercase shadow-sm">🔄 Eski Verileri Getir</button>`;
             }
         };
-
-        function readImg(i, t) { const r = new FileReader(); r.readAsDataURL(i.files[0]); r.onload = e => { if(t==='p'){ pB64=e.target.result; document.getElementById('ps').innerText="✅ ÜRÜN TAMAM"; } else { tB64=e.target.result; document.getElementById('ts').innerText="✅ TEŞHİR TAMAM"; } }; }
-        async function save() { await DB.products.put({ barkod: document.getElementById('regB').value, n: document.getElementById('regN').value.toUpperCase(), p: document.getElementById('regP').value, img: pB64, timg: tB64 }); alert("Kaydedildi!"); router('havuz'); }
-        async function deleteP(b) { if(confirm('Silinsin mi?')){ await DB.products.delete(b); router('havuz'); } }
-        async function searchPool(v) { const res = document.getElementById('search-res'); if(v.length<2) return res.classList.add('hidden'); const ps = await DB.products.filter(p=>p.n.toLowerCase().includes(v.toLowerCase())).toArray(); res.innerHTML = ps.map(p => `<div onclick="selectP('${p.barkod}')" class="p-4 border-b font-bold text-xs uppercase cursor-pointer">${p.n}</div>`).join(''); res.classList.remove('hidden'); }
-        async function selectP(b) { selectedProduct = await DB.products.get(b); document.getElementById('sel-box').innerHTML = `<div class="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 flex items-center gap-3"><img src="${selectedProduct.img}" class="w-10 h-10 rounded-lg object-cover"><p class="font-bold text-xs uppercase text-emerald-900">${selectedProduct.n}</p></div>`; document.getElementById('search-res').classList.add('hidden'); document.getElementById('searchIn').value = selectedProduct.n; }
-        function addToQueue() { if(!selectedProduct) return alert("Ürün seç!"); queue.push({ p: selectedProduct, ns: document.getElementById('ns').value, is: document.getElementById('is').value, op: document.getElementById('opType').value, note: document.getElementById('note').value }); document.getElementById('report-bar').style.display = 'flex'; document.getElementById('q-count').innerText = queue.length + " ÜRÜN"; alert("Eklendi!"); }
 
         router('kayit');
     </script>
