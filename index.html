@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SKT KONTROL - SOĞANLIK 2</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800;900&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background: #f8fafc; }
+        .input-elite { background: white; border: 2px solid #e2e8f0; border-radius: 16px; padding: 12px 16px; width: 100%; font-weight: 600; outline: none; transition: 0.3s; }
+        .input-elite:focus { border-color: #0f5c3f; box-shadow: 0 0 0 4px rgba(15, 92, 63, 0.1); }
+        .tab-active { color: #0f5c3f; border-bottom: 4px solid #e8b87a; }
+    </style>
+</head>
+<body class="max-w-md mx-auto min-h-screen pb-24">
+
+    <header class="bg-[#0f5c3f] p-8 rounded-b-[40px] text-center shadow-2xl">
+        <h1 class="text-white text-2xl font-black tracking-tighter italic">SKT KONTROL</h1>
+        <p class="text-[#e8b87a] text-[10px] font-bold tracking-[4px] uppercase mt-1">Soğanlık 2 Premium</p>
+    </header>
+
+    <nav class="flex bg-white mx-6 -mt-6 rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+        <button onclick="showPage('kayit')" class="flex-1 p-4 font-bold text-xs uppercase" id="nav-kayit">Ürün Kayıt</button>
+        <button onclick="showPage('analiz')" class="flex-1 p-4 font-bold text-xs uppercase" id="nav-analiz">Analiz</button>
+        <button onclick="showPage('havuz')" class="flex-1 p-4 font-bold text-xs uppercase" id="nav-havuz">Havuz</button>
+    </nav>
+
+    <main id="app-content" class="p-6"></main>
+
+    <div id="report-bar" class="fixed bottom-6 left-6 right-6 bg-slate-900 p-4 rounded-3xl shadow-2xl flex justify-between items-center hidden">
+        <span id="queue-count" class="text-white font-bold text-sm ml-2">0 Ürün</span>
+        <button onclick="generateElitPDF()" class="bg-[#e8b87a] text-slate-900 px-6 py-3 rounded-2xl font-black text-[10px] uppercase">Raporu Hazırla 📄</button>
+    </div>
+
+    <div id="pdf-export-zone" class="hidden" style="position: absolute; left: -9999px;"></div>
+
+    <script>
+        const db = new Dexie("Soganlik2DB");
+        db.version(1).stores({ products: "barkod, n", queue: "++id" });
+
+        let currentQueue = [];
+
+        // Sayfa Yönlendirme
+        async function showPage(page) {
+            const content = document.getElementById('app-content');
+            document.querySelectorAll('nav button').forEach(b => b.classList.remove('tab-active'));
+            document.getElementById('nav-' + page).classList.add('tab-active');
+
+            if (page === 'kayit') {
+                content.innerHTML = `
+                <div class="space-y-4 bg-white p-6 rounded-[30px] shadow-sm">
+                    <input id="k-barkod" placeholder="Barkod Okut (Lazer)" class="input-elite">
+                    <input id="k-ad" placeholder="Ürün Adı" class="input-elite uppercase">
+                    <input id="k-fiyat" placeholder="Normal Satış Fiyatı" type="number" class="input-elite">
+                    <div class="grid grid-cols-2 gap-3">
+                        <button onclick="document.getElementById('f-urun').click()" class="bg-gray-100 p-4 rounded-2xl text-[10px] font-bold">ÜRÜN FOTO</button>
+                        <button onclick="document.getElementById('f-teshir').click()" class="bg-orange-50 p-4 rounded-2xl text-[10px] font-bold text-orange-600">TEŞHİR FOTO</button>
+                    </div>
+                    <input type="file" id="f-urun" class="hidden" onchange="preview(this, 'p1')">
+                    <input type="file" id="f-teshir" class="hidden" onchange="preview(this, 'p2')">
+                    <button onclick="saveProduct()" class="w-full bg-[#0f5c3f] text-white p-5 rounded-2xl font-black uppercase">Havuza Gönder</button>
+                </div>`;
+            } else if (page === 'analiz') {
+                const prods = await db.products.toArray();
+                content.innerHTML = `
+                <div class="space-y-4">
+                    <div class="bg-slate-900 p-6 rounded-[30px] text-white">
+                        <p class="text-[10px] font-bold text-[#e8b87a] mb-2">RAPOR GENEL BİLGİSİ</p>
+                        <input id="r-baslik" value="İNSERT DÖNEMİ ANALİZİ" class="w-full bg-slate-800 p-3 rounded-xl mb-2 text-sm">
+                        <input id="r-sube" value="SOĞANLIK 2" class="w-full bg-slate-800 p-3 rounded-xl text-sm">
+                    </div>
+                    <div class="bg-white p-6 rounded-[30px] shadow-sm space-y-3">
+                        <select id="a-sec" class="input-elite" onchange="loadProductInfo(this.value)">
+                            <option value="">Ürün Seçiniz...</option>
+                            ${prods.map(p => `<option value="${p.barkod}">${p.n}</option>`).join('')}
+                        </select>
+                        <div class="grid grid-cols-2 gap-3">
+                            <input id="a-ns" placeholder="Normal Satış" type="number" class="input-elite">
+                            <input id="a-is" placeholder="İnsert Satış" type="number" class="input-elite">
+                        </div>
+                        <select id="a-tip" class="input-elite">
+                            <option>Gondol Başı</option><option>Havuz Dolabı</option><option>Sepet Teşhir</option><option>Kasa Önü</option><option>Ön Yüz/Blok</option>
+                        </select>
+                        <textarea id="a-not" placeholder="Saha Analiz Yazısı (Rakipler, konum vb.)" class="input-elite h-24"></textarea>
+                        <button onclick="addToReport()" class="w-full bg-orange-500 text-white p-5 rounded-2xl font-black uppercase">Sıraya Ekle</button>
+                    </div>
+                </div>`;
+            } else if (page === 'havuz') {
+                const prods = await db.products.toArray();
+                content.innerHTML = `<div class="grid grid-cols-2 gap-4">${prods.map(p => `
+                    <div class="bg-white p-3 rounded-2xl shadow-sm text-center relative group">
+                        <img src="${p.img}" class="h-24 w-full object-contain mb-2">
+                        <p class="text-[10px] font-bold truncate uppercase">${p.n}</p>
+                        <button onclick="deleteProduct('${p.barkod}')" class="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 text-[8px]">X</button>
+                    </div>
+                `).join('')}</div>`;
+            }
+        }
+
+        // Resim Önizleme ve Base64
+        let imgUrun = "", imgTeshir = "";
+        function preview(input, type) {
+            const reader = new FileReader();
+            reader.onload = e => { if(type==='p1') imgUrun = e.target.result; else imgTeshir = e.target.result; alert("Resim Hazır!"); };
+            reader.readAsDataURL(input.files[0]);
+        }
+
+        async function saveProduct() {
+            const b = document.getElementById('k-barkod').value;
+            const n = document.getElementById('k-ad').value;
+            const f = document.getElementById('k-fiyat').value;
+            if(!b || !n || !imgUrun) return alert("Eksik veri!");
+            await db.products.put({ barkod: b, n, f, img: imgUrun, tImg: imgTeshir });
+            alert("Ürün Havuzda!"); showPage('havuz');
+        }
+
+        async function deleteProduct(b) { if(confirm('Silinsin mi?')) { await db.products.delete(b); showPage('havuz'); } }
+
+        function addToReport() {
+            const b = document.getElementById('a-sec').value;
+            if(!b) return alert("Ürün seç!");
+            db.products.get(b).then(p => {
+                currentQueue.push({
+                    p,
+                    ns: document.getElementById('a-ns').value,
+                    is: document.getElementById('a-is').value,
+                    tip: document.getElementById('a-tip').value,
+                    not: document.getElementById('a-not').value,
+                    baslik: document.getElementById('r-baslik').value,
+                    sube: document.getElementById('r-sube').value
+                });
+                document.getElementById('report-bar').classList.remove('hidden');
+                document.getElementById('queue-count').innerText = currentQueue.length + " ÜRÜN SIRADA";
+                alert("Sıraya eklendi!");
+            });
+        }
+
+        // PDF OLUŞTURMA SİHİRBAZI
+        async function generateElitPDF() {
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const zone = document.getElementById('pdf-export-zone');
+            zone.classList.remove('hidden');
+
+            // 1. KAPAK SAYFASI
+            const first = currentQueue[0];
+            zone.innerHTML = `
+                <div id="tpl-kapak" style="width:794px; height:1123px; background:#0f5c3f; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; color:white; font-family:'Plus Jakarta Sans';">
+                    <div style="border:10px solid #e8b87a; padding:60px; width:80%;">
+                        <h1 style="font-size:70px; font-weight:900; letter-spacing:-2px; margin:0;">${first.baslik}</h1>
+                        <div style="height:4px; background:#e8b87a; width:100px; margin:30px auto;"></div>
+                        <h2 style="font-size:40px; font-weight:600; color:#e8b87a;">${first.sube}</h2>
+                        <p style="font-size:18px; margin-top:100px; opacity:0.8; letter-spacing:5px;">STRATEJİK PERFORMANS RAPORU</p>
+                    </div>
+                </div>`;
+            const cKapak = await html2canvas(document.getElementById('tpl-kapak'));
+            pdf.addImage(cKapak.toDataURL('image/jpeg', 0.9), 'JPEG', 0, 0, 210, 297);
+
+            // 2. ÜRÜN SAYFALARI (Döngü)
+            for(let item of currentQueue) {
+                // Sayfa A: Ürün İşlem (Teşhir)
+                pdf.addPage();
+                zone.innerHTML = `
+                <div id="tpl-p1" style="width:794px; height:1123px; background:#ffffff; font-family:'Plus Jakarta Sans';">
+                    <div style="height:100px; background:#0f5c3f; display:flex; align-items:center; padding:0 50px; justify-content:space-between;">
+                        <span style="color:white; font-weight:900; font-size:24px;">${item.p.n}</span>
+                        <span style="color:#e8b87a; font-weight:800; font-size:18px;">${item.tip} UYGULAMASI</span>
+                    </div>
+                    <div style="padding:40px; display:flex; justify-content:center;">
+                        <img src="${item.p.tImg || item.p.img}" style="width:700px; height:850px; object-fit:cover; border-radius:30px; box-shadow:0 30px 60px rgba(0,0,0,0.15);">
+                    </div>
+                </div>`;
+                const c1 = await html2canvas(document.getElementById('tpl-p1'));
+                pdf.addImage(c1.toDataURL('image/jpeg', 0.85), 'JPEG', 0, 0, 210, 297);
+
+                // Sayfa B: Ürün Künyesi ve Analiz
+                pdf.addPage();
+                zone.innerHTML = `
+                <div id="tpl-p2" style="width:794px; height:1123px; background:#fef9f0; padding:60px; font-family:'Plus Jakarta Sans'; box-sizing:border-box;">
+                    <div style="display:flex; gap:40px; margin-bottom:50px;">
+                        <img src="${item.p.img}" style="width:250px; height:250px; border-radius:30px; background:white; object-fit:contain; padding:20px; box-shadow:0 10px 30px rgba(0,0,0,0.05);">
+                        <div style="display:flex; flex-direction:column; justify-content:center;">
+                            <h2 style="font-size:45px; font-weight:900; color:#0f5c3f; margin:0;">${item.p.n}</h2>
+                            <p style="font-size:20px; font-weight:600; color:#666;">Barkod: ${item.p.barkod}</p>
+                        </div>
+                    </div>
+                    
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:30px; margin-bottom:50px;">
+                        <div style="background:white; padding:40px; border-radius:30px; text-align:center; border-bottom:8px solid #cbd5e1;">
+                            <p style="font-size:16px; font-weight:800; color:#94a3b8; margin-bottom:10px;">NORMAL SATIŞ</p>
+                            <span style="font-size:50px; font-weight:900; color:#1e293b;">${item.ns} AD</span>
+                        </div>
+                        <div style="background:white; padding:40px; border-radius:30px; text-align:center; border-bottom:8px solid #e8b87a;">
+                            <p style="font-size:16px; font-weight:800; color:#e8b87a; margin-bottom:10px;">İNSERT SATIŞ</p>
+                            <span style="font-size:50px; font-weight:900; color:#0f5c3f;">${item.is} AD</span>
+                        </div>
+                    </div>
+
+                    <div style="background:white; padding:50px; border-radius:40px; min-height:400px; position:relative;">
+                        <h3 style="color:#0f5c3f; font-size:24px; font-weight:900; margin-bottom:20px;">SAHA ANALİZİ & OPERASYON NOTU</h3>
+                        <p style="font-size:22px; line-height:1.6; color:#475569;">${item.not}</p>
+                        <div style="position:absolute; bottom:40px; right:40px; font-weight:900; color:#e8b87a; font-style:italic;">SOĞANLIK 2 PREMIUM ANALYTICS</div>
+                    </div>
+                </div>`;
+                const c2 = await html2canvas(document.getElementById('tpl-p2'));
+                pdf.addImage(c2.toDataURL('image/jpeg', 0.85), 'JPEG', 0, 0, 210, 297);
+            }
+
+            pdf.save(`${first.baslik}_Soganlik2.pdf`);
+            location.reload();
+        }
+
+        // Başlangıç
+        showPage('kayit');
+    </script>
+</body>
+</html>
