@@ -1,4 +1,4 @@
-const CACHE_NAME = 'skt-kontrol-v36-premium';
+const CACHE_NAME = 'insert-analiz-v1';
 const urlsToCache = [
     './',
     './index.html',
